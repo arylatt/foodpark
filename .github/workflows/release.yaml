@@ -1,6 +1,9 @@
 # https://github.com/ConsulTent/go-release.action/tree/v1.05
 
-on: release
+on:
+  release:
+    types:
+      - published
 name: Build Release
 jobs:
   release-linux-386:
@@ -69,6 +72,20 @@ jobs:
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         GOARCH: amd64
+        GOOS: darwin
+        PROJECT_NAME: foodpark
+        EXTRA_FILES: ''
+        CGO_ENABLED: 0
+  release-darwin-arm64:
+    name: release darwin/arm64
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@master
+    - name: compile and release
+      uses: ConsulTent/go-release.action@v1.05
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        GOARCH: arm64
         GOOS: darwin
         PROJECT_NAME: foodpark
         EXTRA_FILES: ''
