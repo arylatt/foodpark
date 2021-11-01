@@ -28,7 +28,7 @@ func main() {
 	viper.SetDefault("url", "https://www.foodparkcam.com/whos-trading")
 	viper.SetDefault("location_filter_query", "h2")
 	viper.SetDefault("location_filter_value", "Unit 332, Cambridge Science Park")
-	viper.SetDefault("name_filter_query", "h3")
+	viper.SetDefault("anchor_filter_query", ".sqs-block-button-element")
 	viper.SetDefault("target_date", thursday.Format("2006-01-02"))
 	viper.SetDefault("slack_username", "foodPark")
 	viper.BindEnv("slack_channel")
@@ -69,23 +69,29 @@ func main() {
 	var foodParkOptions []foodParkOption = []foodParkOption{}
 
 	foodOptionsDiv.Children().Each(func(i int, s *goquery.Selection) {
-		foodOption := foodParkOption{
-			name: s.Find(viper.GetString("name_filter_query")).Text(),
-		}
+		foodOptionsAnchorTags := s.Find(viper.GetString("anchor_filter_query"))
 
-		url, exists := s.Find("a").Attr("href")
-		if !exists {
-			log.Fatalf("Failed to find URL for food option %s", foodOption.name)
-			os.Exit(1)
-		}
-		if !strings.Contains(url, viper.GetString("target_date")) {
-			log.Fatalf("Failed to find target date string %s in URL %s", viper.GetString("target_date"), url)
-			os.Exit(1)
-		}
+		foodOptionsAnchorTags.Each(func(i int, s1 *goquery.Selection) {
+			url, exists := s1.Attr("href")
 
-		foodOption.url = url
+			if !exists {
+				log.Fatal("Anchor tag does not have a href attribute")
+				os.Exit(1)
+			}
+			if !strings.Contains(url, viper.GetString("target_date")) {
+				log.Fatalf("Failed to find target date string %s in URL %s", viper.GetString("target_date"), url)
+				os.Exit(1)
+			}
 
-		foodParkOptions = append(foodParkOptions, foodOption)
+			name := s1.Parent().Parent().Parent().Prev().Text()
+
+			foodOption := foodParkOption{
+				name: name,
+				url:  url,
+			}
+
+			foodParkOptions = append(foodParkOptions, foodOption)
+		})
 	})
 
 	fallBackString := fmt.Sprintf("*foodPark Menus for %s:*", viper.GetString("target_date"))
