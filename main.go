@@ -27,7 +27,7 @@ func main() {
 	viper.AutomaticEnv()
 	viper.SetDefault("url", "https://www.foodparkcam.com/whos-trading")
 	viper.SetDefault("location_filter_query", "h2")
-	viper.SetDefault("location_filter_value", "Unit 332, Cambridge Science Park")
+	viper.SetDefault("location_filter_value", "Cambridge Science Park")
 	viper.SetDefault("anchor_filter_query", ".sqs-block-button-element")
 	viper.SetDefault("break_filter_query", "spacer-block sqs-block-spacer")
 	viper.SetDefault("target_date", thursday.Format("2006-01-02"))
@@ -55,11 +55,15 @@ func main() {
 	}
 
 	var startingDiv *goquery.Selection = nil
+	location := ""
 
-	doc.Find(viper.GetString("location_filter_query")).Each(func(i int, s *goquery.Selection) {
-		if s.Text() == viper.GetString("location_filter_value") {
+	doc.Find(viper.GetString("location_filter_query")).EachWithBreak(func(i int, s *goquery.Selection) bool {
+		if strings.Contains(s.Text(), viper.GetString("location_filter_value")) {
+			location = s.Text()
 			startingDiv = s.Parent().Parent().Next()
+			return false
 		}
+		return true
 	})
 
 	if startingDiv == nil {
@@ -101,7 +105,7 @@ func main() {
 		})
 	}
 
-	fallBackString := fmt.Sprintf("*foodPark Menus for %s:*", viper.GetString("target_date"))
+	fallBackString := fmt.Sprintf("*foodPark Menus for %s at %s:*", viper.GetString("target_date"), location)
 	attachmentActions := []slack.AttachmentAction{}
 
 	for _, opt := range foodParkOptions {
@@ -122,7 +126,7 @@ func main() {
 		Attachments: []slack.Attachment{
 			{
 				Fallback: fallBackString,
-				Title:    fmt.Sprintf("foodPark Menus for %s", viper.GetString("target_date")),
+				Title:    fmt.Sprintf("foodPark Menus for %s at %s", viper.GetString("target_date"), location),
 				Actions:  attachmentActions,
 			},
 		},
