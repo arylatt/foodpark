@@ -26,10 +26,10 @@ func main() {
 	viper.SetEnvPrefix("fp")
 	viper.AutomaticEnv()
 	viper.SetDefault("url", "https://www.foodparkcam.com/whos-trading")
-	viper.SetDefault("location_filter_query", "h2")
+	viper.SetDefault("location_selector", "h2 > strong")
 	viper.SetDefault("location_filter_value", "Cambridge Science Park")
-	viper.SetDefault("anchor_filter_query", ".sqs-block-button-element")
-	viper.SetDefault("break_filter_query", "spacer-block sqs-block-spacer")
+	viper.SetDefault("anchor_selector", ".sqs-block-button-element")
+	viper.SetDefault("outer_container_selector", "div.sqs-layout.sqs-grid-12.columns-12[data-type=page-section]")
 	viper.SetDefault("target_date", thursday.Format("2006-01-02"))
 	viper.SetDefault("slack_username", "foodPark")
 	viper.BindEnv("slack_channel")
@@ -54,56 +54,72 @@ func main() {
 		os.Exit(1)
 	}
 
-	var startingDiv *goquery.Selection = nil
+	var outerDiv *goquery.Selection = nil
 	location := ""
 
-	doc.Find(viper.GetString("location_filter_query")).EachWithBreak(func(i int, s *goquery.Selection) bool {
-		if strings.Contains(s.Text(), viper.GetString("location_filter_value")) {
+	doc.Find(viper.GetString("location_selector")).EachWithBreak(func(i int, s *goquery.Selection) bool {
+		if strings.Contains(strings.ToLower(s.Text()), strings.ToLower(viper.GetString("location_filter_value"))) {
 			location = s.Text()
-			startingDiv = s.Parent().Parent().Next()
+			for outerDiv == nil {
+				s = s.Parent()
+				if s.Is("html") {
+					return false
+				}
+
+				if s.Is(viper.GetString("outer_container_selector")) {
+					outerDiv = s
+					return false
+				}
+			}
 			return false
 		}
 		return true
 	})
 
-	if startingDiv == nil {
+	if outerDiv == nil {
 		log.Fatal("Failed to find food park options from page data!")
 		os.Exit(1)
 	}
 
-	possibleDivs := []*goquery.Selection{startingDiv}
-	for !possibleDivs[len(possibleDivs)-1].Next().HasClass(viper.GetString("break_filter_query")) {
-		possibleDivs = append(possibleDivs, possibleDivs[len(possibleDivs)-1].Next())
-	}
-
 	var foodParkOptions []foodParkOption = []foodParkOption{}
 
-	// startingDiv.Children().Each(func(i int, s *goquery.Selection) {
-	for _, s := range possibleDivs {
-		foodOptionsAnchorTags := s.Find(viper.GetString("anchor_filter_query"))
+	foodOptionsAnchorTags := outerDiv.Find(viper.GetString("anchor_selector"))
 
-		foodOptionsAnchorTags.Each(func(i int, s1 *goquery.Selection) {
-			url, exists := s1.Attr("href")
+	foodOptionsAnchorTags.Each(func(i int, s1 *goquery.Selection) {
+		url, exists := s1.Attr("href")
 
-			if !exists {
-				log.Fatal("Anchor tag does not have a href attribute")
+		if !exists {
+			log.Fatal("Anchor tag does not have a href attribute")
+			os.Exit(1)
+		}
+		if !strings.Contains(url, viper.GetString("target_date")) {
+			log.Fatalf("Failed to find target date string %s in URL %s", viper.GetString("target_date"), url)
+			os.Exit(1)
+		}
+
+		name := ""
+
+		for name == "" {
+			s1 = s1.Parent()
+
+			if s1.Is("html") {
+				log.Fatalf("Failed to find vendor name for %s", url)
 				os.Exit(1)
 			}
-			if !strings.Contains(url, viper.GetString("target_date")) {
-				log.Fatalf("Failed to find target date string %s in URL %s", viper.GetString("target_date"), url)
-				os.Exit(1)
+
+			prevSibling := s1.Prev()
+			if len(prevSibling.Nodes) != 0 {
+				name = strings.TrimSpace(prevSibling.Text())
 			}
+		}
 
-			name := s1.Parent().Parent().Parent().Prev().Text()
+		foodOption := foodParkOption{
+			name: name,
+			url:  url,
+		}
 
-			foodOption := foodParkOption{
-				name: name,
-				url:  url,
-			}
-
-			foodParkOptions = append(foodParkOptions, foodOption)
-		})
-	}
+		foodParkOptions = append(foodParkOptions, foodOption)
+	})
 
 	fallBackString := fmt.Sprintf("*foodPark Menus for %s at %s:*", viper.GetString("target_date"), location)
 	attachmentActions := []slack.AttachmentAction{}
