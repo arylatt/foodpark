@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -9,7 +10,7 @@ import (
 	"time"
 
 	"github.com/PuerkitoBio/goquery"
-	"github.com/nlopes/slack"
+	"github.com/slack-go/slack"
 	"github.com/spf13/viper"
 )
 
@@ -88,11 +89,7 @@ func main() {
 	foodOptionsAnchorTags.Each(func(i int, s1 *goquery.Selection) {
 		url, exists := s1.Attr("href")
 
-		if !exists {
-			log.Fatal("Anchor tag does not have a href attribute")
-			os.Exit(1)
-		}
-		if !strings.Contains(url, viper.GetString("target_date")) {
+		if exists && url != "" && !strings.Contains(url, viper.GetString("target_date")) {
 			log.Fatalf("Failed to find target date string %s in URL %s", viper.GetString("target_date"), url)
 			os.Exit(1)
 		}
@@ -110,6 +107,10 @@ func main() {
 			prevSibling := s1.Prev()
 			if len(prevSibling.Nodes) != 0 {
 				name = strings.TrimSpace(prevSibling.Text())
+
+				if url == "" {
+					name += "*"
+				}
 			}
 		}
 
@@ -121,32 +122,48 @@ func main() {
 		foodParkOptions = append(foodParkOptions, foodOption)
 	})
 
-	fallBackString := fmt.Sprintf("*foodPark Menus for %s at %s:*", viper.GetString("target_date"), location)
-	attachmentActions := []slack.AttachmentAction{}
+	buttonBlocks := []slack.BlockElement{}
+	walkUpOnly := false
 
 	for _, opt := range foodParkOptions {
-		fallBackString += fmt.Sprintf("\n- <%s|%s>", opt.name, opt.url)
-		attachmentActions = append(attachmentActions, slack.AttachmentAction{
-			Name:  opt.name,
-			Text:  opt.name,
-			Style: "primary",
-			Type:  "button",
-			URL:   opt.url,
-		})
+		style := slack.StylePrimary
+		if opt.url == "" {
+			walkUpOnly = true
+			style = slack.StyleDefault
+		}
+
+		textBlock := slack.NewTextBlockObject("plain_text", opt.name, false, false)
+		buttonBlock := slack.NewButtonBlockElement("", "", textBlock)
+		buttonBlock.Style = style
+		buttonBlock.URL = opt.url
+
+		buttonBlocks = append(buttonBlocks, buttonBlock)
+	}
+
+	headerText := slack.NewTextBlockObject("mrkdwn", fmt.Sprintf("*foodPark Menus for %s at %s*", viper.GetString("target_date"), location), false, false)
+	header := slack.NewSectionBlock(headerText, nil, nil)
+
+	actions := slack.NewActionBlock("", buttonBlocks...)
+
+	footerText := slack.NewTextBlockObject("mrkdwn", "* _denotes a walk-up only truck, not taking pre-orders._", false, false)
+	footer := slack.NewSectionBlock(footerText, nil, nil)
+
+	blocks := []slack.Block{header, actions}
+
+	if walkUpOnly {
+		blocks = append(blocks, footer)
 	}
 
 	message := &slack.WebhookMessage{
 		Username: viper.GetString("slack_username"),
 		Channel:  viper.GetString("slack_channel"),
 		IconURL:  viper.GetString("slack_icon"),
-		Attachments: []slack.Attachment{
-			{
-				Fallback: fallBackString,
-				Title:    fmt.Sprintf("foodPark Menus for %s at %s", viper.GetString("target_date"), location),
-				Actions:  attachmentActions,
-			},
+		Blocks: &slack.Blocks{
+			BlockSet: blocks,
 		},
 	}
+
+	json.NewEncoder(os.Stdout).Encode(&message)
 
 	err = slack.PostWebhook(viper.GetString("slack_webhook"), message)
 	if err != nil {
