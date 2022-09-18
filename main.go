@@ -145,7 +145,7 @@ func main() {
 
 	actions := slack.NewActionBlock("", buttonBlocks...)
 
-	footerText := slack.NewTextBlockObject("mrkdwn", "* _denotes a walk-up only truck, not taking pre-orders._", false, false)
+	footerText := slack.NewTextBlockObject("mrkdwn", "* _denotes a truck not currently taking pre-orders._", false, false)
 	footer := slack.NewSectionBlock(footerText, nil, nil)
 
 	blocks := []slack.Block{header, actions}
