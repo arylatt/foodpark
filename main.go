@@ -19,6 +19,8 @@ type foodParkOption struct {
 	url  string
 }
 
+const InputDateFormat = "2006-01-02"
+
 func main() {
 	now := time.Now()
 	thursdayDate := now.Day() + ((7 + 4 - int(now.Weekday())) % 7)
@@ -27,11 +29,13 @@ func main() {
 	viper.SetEnvPrefix("fp")
 	viper.AutomaticEnv()
 	viper.SetDefault("url", "https://www.foodparkcam.com/whos-trading")
+	viper.SetDefault("date_selector", "h1 > strong")
 	viper.SetDefault("location_selector", "h2 > strong")
 	viper.SetDefault("location_filter_value", "Cambridge Science Park")
 	viper.SetDefault("anchor_selector", ".sqs-block-button-element")
 	viper.SetDefault("outer_container_selector", "div.sqs-layout.sqs-grid-12.columns-12[data-type=page-section]")
-	viper.SetDefault("target_date", thursday.Format("2006-01-02"))
+	viper.SetDefault("target_date", thursday.Format(InputDateFormat))
+	viper.SetDefault("date_format", "Mon 02 January")
 	viper.SetDefault("slack_username", "foodPark")
 	viper.BindEnv("slack_channel")
 	viper.SetDefault("slack_icon", "https://foodparkcam.com/favicon.ico")
@@ -55,26 +59,48 @@ func main() {
 		os.Exit(1)
 	}
 
+	targetDate, _ := time.Parse(InputDateFormat, viper.GetString("target_date"))
+	targetDateHeader := strings.ToUpper(targetDate.Format(viper.GetString("date_format")))
+
 	var outerDiv *goquery.Selection = nil
 	location := ""
 
-	doc.Find(viper.GetString("location_selector")).EachWithBreak(func(i int, s *goquery.Selection) bool {
-		if strings.Contains(strings.ToLower(s.Text()), strings.ToLower(viper.GetString("location_filter_value"))) {
-			location = s.Text()
-			for outerDiv == nil {
-				s = s.Parent()
-				if s.Is("html") {
-					return false
-				}
-
-				if s.Is(viper.GetString("outer_container_selector")) {
-					outerDiv = s
-					return false
-				}
-			}
-			return false
+	doc.Find(viper.GetString("date_selector")).EachWithBreak(func(i int, s *goquery.Selection) bool {
+		if strings.TrimSpace(s.Text()) != targetDateHeader {
+			return true
 		}
-		return true
+
+		for outerDiv == nil {
+			s = s.Parent()
+			if s.Is("html") {
+				return true
+			}
+
+			if s.Is(viper.GetString("outer_container_selector")) {
+				s.Find(viper.GetString("location_selector")).EachWithBreak(func(i int, s1 *goquery.Selection) bool {
+					if strings.Contains(strings.ToLower(s1.Text()), strings.ToLower(viper.GetString("location_filter_value"))) {
+						location = s1.Text()
+						for outerDiv == nil {
+							s1 = s1.Parent()
+							if s1.Is("html") {
+								return false
+							}
+
+							if s1.Is(viper.GetString("outer_container_selector")) {
+								outerDiv = s1
+								return false
+							}
+						}
+
+						return false
+					}
+
+					return true
+				})
+			}
+		}
+
+		return outerDiv == nil
 	})
 
 	if outerDiv == nil {
