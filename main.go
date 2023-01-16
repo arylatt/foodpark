@@ -166,7 +166,7 @@ func main() {
 		buttonBlocks = append(buttonBlocks, buttonBlock)
 	}
 
-	headerText := slack.NewTextBlockObject("mrkdwn", fmt.Sprintf("*foodPark Menus for %s at %s*", viper.GetString("target_date"), location), false, false)
+	headerText := slack.NewTextBlockObject("mrkdwn", fmt.Sprintf("*foodPark Menus for %s at %s*", targetDateHeader, location), false, false)
 	header := slack.NewSectionBlock(headerText, nil, nil)
 
 	actions := slack.NewActionBlock("", buttonBlocks...)
