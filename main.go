@@ -31,6 +31,7 @@ func main() {
 	viper.SetDefault("url", "https://www.foodparkcam.com/whos-trading")
 	viper.SetDefault("date_selector", "h1 > strong")
 	viper.SetDefault("location_selector", "h2 > strong")
+	viper.SetDefault("name_selector", "strong")
 	viper.SetDefault("location_filter_value", "Cambridge Science Park")
 	viper.SetDefault("anchor_selector", ".sqs-block-button-element")
 	viper.SetDefault("outer_container_selector", "div.sqs-layout.sqs-grid-12.columns-12[data-type=page-section]")
@@ -130,7 +131,7 @@ func main() {
 				os.Exit(1)
 			}
 
-			prevSibling := s1.Prev()
+			prevSibling := s1.Prev().Find(viper.GetString("name_selector"))
 			if len(prevSibling.Nodes) != 0 {
 				name = strings.TrimSpace(prevSibling.Text())
 
